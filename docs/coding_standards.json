@@ -1,0 +1,139 @@
+{
+  "standard": "PLSQL_PROCEDURE_TEMPLATE_V2",
+  "applies_to": ["procedure"],
+  "naming": {
+    "local_variable_prefix": "lv_",
+    "in_param_prefix": "i_",
+    "out_param_prefix": "o_",
+    "exception_prefix": "e_",
+    "package_constant_for_scope_prefix": "gc_package"
+  },
+  "required_signature": {
+    "must_include_out_param": {
+      "name": "o_error",
+      "datatype": "CLOB",
+      "mode": "OUT",
+      "rule": "Every procedure must have an OUT parameter o_error CLOB."
+    }
+  },
+  "required_declare_block": {
+    "nodes": [
+      {
+        "type": "VarDecl",
+        "name": "lv_scope",
+        "datatype": "logger_logs.scope%type",
+        "default_expression": "gc_package || '[PROCEDURE_NAME]'",
+        "notes": [
+          "Replace [PROCEDURE_NAME] with the actual procedure name (no brackets in final code).",
+          "Example: lv_scope := gc_package || 'get_resultaten';"
+        ]
+      },
+      {
+        "type": "VarDecl",
+        "name": "lv_params",
+        "datatype": "logger.tab_param"
+      }
+    ]
+  },
+  "exceptions": {
+    "required_exception_symbol": {
+      "name": "e_standard_exception",
+      "type": "ExceptionDecl",
+      "scope": "procedure_or_package",
+      "rule": "A standard exception must exist and be used for handled errors."
+    },
+    "handled_error_pattern": {
+      "nodes": [
+        {
+          "type": "Assign",
+          "target": "o_error",
+          "expression_template": "'Fout: ' || <DUTCH_MESSAGE>"
+        },
+        {
+          "type": "Raise",
+          "exception": "e_standard_exception"
+        }
+      ],
+      "notes": [
+        "If code handles an error intentionally, set o_error in Dutch and raise e_standard_exception."
+      ]
+    },
+    "required_exception_handlers": [
+      {
+        "type": "ExceptionHandler",
+        "when": "e_standard_exception",
+        "body_nodes": [
+          {
+            "type": "If",
+            "condition": "o_error is null",
+            "then_nodes": [
+              {
+                "type": "Assign",
+                "target": "o_error",
+                "expression": "'Fout in ' || lv_scope || ': ' || sqlerrm"
+              }
+            ]
+          },
+          {
+            "type": "Call",
+            "callee": "logger.log_error",
+            "args": ["o_error", "lv_scope", "null", "lv_params"]
+          },
+          {
+            "type": "Call",
+            "callee": "debug_output",
+            "args": ["'o_error: ' || o_error"]
+          }
+        ],
+        "notes": [
+          "Handled errors must route through e_standard_exception and be logged in this handler."
+        ]
+      },
+      {
+        "type": "ExceptionHandler",
+        "when": "OTHERS",
+        "body_nodes": [
+          {
+            "type": "If",
+            "condition": "o_error is null",
+            "then_nodes": [
+              {
+                "type": "Assign",
+                "target": "o_error",
+                "expression": "'Fout in ' || lv_scope || ': ' || sqlerrm"
+              }
+            ]
+          },
+          {
+            "type": "Call",
+            "callee": "logger.log_error",
+            "args": ["o_error", "lv_scope", "null", "lv_params"]
+          },
+          {
+            "type": "Call",
+            "callee": "debug_output",
+            "args": ["'o_error: ' || o_error"]
+          }
+        ],
+        "notes": ["Unexpected errors must be logged in this handler."]
+      }
+    ]
+  },
+  "required_end_of_procedure": {
+    "nodes": [
+      {
+        "type": "Call",
+        "callee": "logger.log",
+        "args": ["gc_log_einde", "lv_scope", "null", "lv_params"],
+        "constraints": [
+          "Must be the last executable statement in the procedure.",
+          "Before this call, ensure lv_params contains all OUT parameters except o_error."
+        ]
+      }
+    ]
+  },
+  "logging": {
+    "scope_rule": "lv_scope must be gc_package || '<procedure_name>' in final code.",
+    "out_param_logging_rule": "At end: log all OUT parameters except o_error into lv_params, then call logger.log(gc_log_einde, lv_scope, null, lv_params) as last line."
+  }
+}
